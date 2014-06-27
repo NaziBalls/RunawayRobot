@@ -62,8 +62,9 @@ def calculate_heading_angle(measurement,OTHER):
     if (x3<x2):
         HA2 += pi
 
-    delHA = HA2 - HA1
-
+    delHA = (HA2 - HA1)
+    if delHA < -5 :
+        delHA = delHA%(2*pi)
     HA3 = (HA2+delHA)%(2*pi)
 
     return [HA3, delHA]
@@ -72,45 +73,67 @@ def calculate_heading_angle(measurement,OTHER):
 def estimate_next_pos(measurement, OTHER = None):
     """Estimate the next (x, y) position of the wandering Traxbot
     based on noisy (x, y) measurements."""
+
+
+
     x3 = measurement[0]
     y3 = measurement[1]
+
     if(OTHER == None):
-        OTHER = [measurement, (measurement[0]+1, measurement[1]+1), (0,0), (0.01,0.01), (0,0), (0.01,0.01)]
+        #                                                            HA-2       r-3     x-4    y-5    count-6, theta -7
+        OTHER = [measurement, (measurement[0]+1, measurement[1]+1), (0,10000), (1,10000), (x3,2000), (y3,2000), 0, (0,10000) ]
 
-    [HA3mean1, theta] = calculate_heading_angle(measurement, OTHER)
-    HA3var1 = 1
-    HA3mean = (OTHER[2][0] + theta) % 2*pi
-    HA3var = OTHER[3][0]
-    [HA3updated,HA3varupdated] = update(HA3mean1, HA3var1, HA3mean, HA3var)
-
-
-    rmean1 = distance_between(measurement, OTHER[1])
-    rvar1 = 1
-    rmean = OTHER[2][1]
-    rvar = OTHER[3][1]
-    [rupdated, rvarupdated] = update(rmean1, rvar1, rmean, rvar)
-
-    xest1 = x3 + rupdated*cos(HA3updated)
-    xvar1 = 1
-    yest1 = y3 + rupdated*sin(HA3updated)
-    yvar1 = 1
-    xmean = OTHER[4][0] + rupdated*cos(HA3updated)
-    ymean = OTHER[4][1] + rupdated*sin(HA3updated)
-    xvar = OTHER[5][0]
-    yvar = OTHER[5][1]
-    [xupdate,xvarup]=update(xmean, xvar, xest1, xvar1)
-    [yupdate,yvarup]=update(ymean, yvar, yest1, yvar1)
+    count = OTHER[6]
+    if(count>1):
+        #Localize x and y  given current measurement
+        [xupdated, xvarupdated] = update(x3, 1, OTHER[4][0], OTHER[4][1])
+        [yupdated, yvarupdated] = update(y3, 1, OTHER[5][0], OTHER[5][1])
 
 
+        #Calculate Heading Angle
+        [HA3mean1, theta] = calculate_heading_angle(measurement, OTHER)
+            #Update our guess at what theta is
+        thetavar1 = 1.0
+        [thetaupdated, thetavarupdated] = update(theta, thetavar1, OTHER[7][0], OTHER[7][1])
+            #Use this guess to update our guess of HA
+        HA3var1 = 1.0
+        HA3mean = (OTHER[2][0] + thetaupdated) % (2*pi)
+        HA3var = OTHER[2][1]
+        if (abs(HA3mean-HA3mean1)<1):
+            [HA3updated, HA3varupdated] = update(HA3mean1, HA3var1, HA3mean, HA3var)
+        else:
+            [HA3updated, HA3varupdated] = [HA3mean, HA3var]
+
+        #Calculate Distance Travelled
+        rmean1 = distance_between(measurement, OTHER[1])
+        rvar1 = 1.0
+        rmean = OTHER[3][0]
+        rvar = OTHER[3][1]
+        [rupdated, rvarupdated] = update(rmean1, rvar1, rmean, rvar)
+
+        #Update x and y with movement
+        xmove = rupdated*cos(HA3updated)
+        ymove = rupdated*sin(HA3updated)
+        xvar = rvarupdated+thetavarupdated
+        yvar = rvarupdated+thetavarupdated
+        [xmoved,xvarmoved]=predict(xmove, xvar, xupdated, xvarupdated)
+        [ymoved,yvarmoved]=predict(ymove, yvar, yupdated, yvarupdated)
+
+
+        #Make updates to parameters
+        OTHER[2] = (HA3updated,HA3varupdated)
+        OTHER[3] = (rupdated, rvarupdated)
+        OTHER[4] = (xmoved,xvarmoved)
+        OTHER[5] = (ymoved, yvarmoved)
+        OTHER[7] = (thetaupdated, thetavarupdated)
+        xy_estimate = (xmoved,ymoved)
+
+    else:
+        xy_estimate = (x3, y3)
 
     OTHER[0] = (OTHER[1][0], OTHER[1][1])
     OTHER[1] = (measurement[0],measurement[1])
-    OTHER[2] = (HA3updated,rupdated)
-    OTHER[3] = (HA3varupdated, rvarupdated)
-    OTHER[4] = (xupdate,yupdate)
-    OTHER[5] = (xvarup, yvarup)
-    xy_estimate = (xupdate,yupdate)
-
+    OTHER[6] = OTHER[6] + 1
     # You must return xy_estimate (x, y), and OTHER (even if it is None)
     # in this order for grading purposes.
     return xy_estimate, OTHER
@@ -126,7 +149,7 @@ def distance_between(point1, point2):
 
 def update(mean1, var1, mean2, var2):
     new_mean = (var2 * mean1 + var1 * mean2) / (var1 + var2)
-    new_var = 1/(1/var1 + 1/var2)
+    new_var = 1.0/(1/var1 + 1/var2)
     return [new_mean, new_var]
 
 def predict(mean1, var1, mean2, var2):
