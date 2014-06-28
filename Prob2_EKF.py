@@ -133,15 +133,18 @@ def estimate_next_pos(measurement, OTHER = None):
         d = OTHER[3].value[3][0]
         u = OTHER[3]
         Sigma = OTHER[4]
+        [calc_phi, calc_theta] = calculate_heading_angle(measurement, OTHER)
 
-        G = matrix([[1, 0, -d*sin(phi), cos(phi), 0],
-                    [0, 1,  d*cos(phi), sin(phi), 0],
+        G = matrix([[1, 0, 0, cos(phi), 0],
+                    [0, 1,  0, sin(phi), 0],
                     [0, 0,             1,          0, 1],
                     [0, 0,             0,          1, 0],
                     [0, 0,             0,          0, 1]])
 
         H = matrix([[1, 0, 0 ,0, 0],
-                    [0, 1, 0, 0, 0]])
+                    [0, 1, 0, 0, 0],
+                    [0, 0, 1, 0, 0],
+                    [0, 0, 0, 0, 1]])
 
         I = matrix([[1, 0, 0, 0, 0],
                     [0, 1, 0, 0, 0],
@@ -149,10 +152,10 @@ def estimate_next_pos(measurement, OTHER = None):
                     [0, 0, 0, 1, 0],
                     [0, 0, 0, 0, 1]])
 
-        R = matrix([[0.1, 0], [0, 0.1]])
+        R = matrix([[0.1, 0, 0, 0], [0, 0.1, 0, 0], [0, 0, 0.1, 0], [0, 0, 0, 0.1]])
 
         #Measurement
-        Z = matrix([[measurement[0], measurement[1]]])
+        Z = matrix([[measurement[0], measurement[1], calc_phi, calc_theta]])
         y = Z.transpose() - (H*u)
         S = H*Sigma*H.transpose()+R
         K = Sigma*H.transpose()*S.inverse()
@@ -296,7 +299,7 @@ def naive_next_pos(measurement, OTHER = None):
 
 # This is how we create a target bot. Check the robot.py file to understand
 # How the robot class behaves.
-test_target = robot(0, 0, pi/2, 0.1, 1)
+test_target = robot(0, 0, pi/2, pi/2, 1)
 measurement_noise = 0.05 * test_target.distance
 test_target.set_noise(0.0, 0.0, measurement_noise)
 

@@ -73,14 +73,150 @@ def calculate_heading_angle(measurement,OTHER):
 def estimate_next_pos(measurement, OTHER = None):
     """Estimate the next (x, y) position of the wandering Traxbot
     based on noisy (x, y) measurements."""
-
-
+    N= 1000
+    debug = False
 
     x3 = measurement[0]
     y3 = measurement[1]
 
+    #                                      COUNT P
+    if OTHER == None:
+        OTHER = [measurement, measurement, 0,   []]
+        xy_estimate = measurement
+        p =[]
+    #Run second iteration without guesses
+
+    elif OTHER[2] == 1:
+        xy_estimate = measurement
+        p=[]
+    #Run third iteration with first guess
+
+    elif OTHER[2]== 2:
+        x_est = measurement[0]
+        y_est = measurement[1]
+        [bearing_est, turning_est] = calculate_heading_angle(measurement,OTHER)
+        velocity_est = distance_between(OTHER[0], OTHER[1])
+
+
+
+
+        #Make the particles
+        p = []
+        for i in range(N):
+            x_pos = random.gauss(x_est, 0.001)
+            y_pos = random.gauss(y_est, 0.001)
+            bearing = random.gauss(bearing_est, 0.001)
+            turning = random.gauss(turning_est, 0.001)
+            velocity = random.gauss(velocity_est, 0.001)
+            p.append([x_pos, y_pos, bearing, turning, velocity])
+            x_est = p[0][0]
+            y_est = p[0][1]
+            xy_estimate = (x_est, y_est)
+
+            if (debug):
+                print("The particles initially created are ", p[i])
+
+    else:
+
+        [HA, theta] = calculate_heading_angle(measurement,OTHER)
+
+
+
+        p = OTHER[3]
+
+        #Discard and inject 10% samples
+        for i in range(N/10):
+            x_est = measurement[0]
+            y_est = measurement[1]
+            [bearing_est, turning_est] = calculate_heading_angle(measurement,OTHER)
+            velocity_est = distance_between(OTHER[0], OTHER[1])
+
+
+            x_pos = random.gauss(x_est, 0.001)
+            y_pos = random.gauss(y_est, 0.001)
+            bearing = random.gauss(bearing_est, 0.001)
+            turning = random.gauss(turning_est, 0.001)
+            velocity = random.gauss(velocity_est, 0.001)
+            p[i]=[x_pos, y_pos, bearing, turning, velocity]
+            if (debug):
+                print ("Your reinjected particles at step ", OTHER[2], "are ", p[i])
+
+
+
+        #Measurement Update
+        p = OTHER[3]
+        w = []
+        for i in range(N):
+            w.append(weight(p[i], measurement, OTHER))
+
+
+        # resampling
+        p3 = []
+        index = int(random.random() * N)
+        beta = 0.0
+        mw = max(w)
+        for i in range(N):
+            beta += random.random() * 2.0 * mw
+            while beta > w[index]:
+                beta -= w[index]
+                index = (index + 1) % N
+            newp = [p[index][0], p[index][1], p[index][2], p[index][3], p[index][4]]
+            p3.append(newp)
+            if (debug):
+                print("Your resampled particles at step ", OTHER[2], "are ", p[index])
+        p = p3
+
+
+
+
+        # Motion update
+        for i in range(N):
+
+            if (debug):
+                print("Your particles start at ", p[i], "at step ", OTHER[2])
+
+            velocity = p[i][4]
+            bearing = p[i][2]
+            p[i][0] = p[i][0] + velocity*cos(bearing)
+            p[i][1] = p[i][1] + velocity*sin(bearing)
+            p[i][2] = p[i][2] + p[i][3]
+
+            if(debug):
+                print("And move to ", p[i])
+
+        #Return a particle with a high importance weight
+        index = w.index(max(w))
+        x_est = p[index][0]
+        y_est = p[index][1]
+
+        xy_estimate = (x_est, y_est)
+
+    OTHER[0] = (OTHER[1][0], OTHER[1][1])
+    OTHER[1] = (measurement[0],measurement[1])
+    OTHER[2] = OTHER[2]+1
+    OTHER[3] = p
 
     return xy_estimate, OTHER
+
+
+
+def weight(particle, meas1, OTHER):
+    [bearing, turning] = calculate_heading_angle(meas1, OTHER)
+    x1 = meas1[0]
+    y1 = meas1[1]
+
+    distancex = abs(x1-particle[0])
+    distancey = abs(y1-particle[1])
+    distancebearing = abs(bearing-particle[2])
+    distanceturning = abs(turning-particle[3])
+    w = 5/(distancex+distancey+distancebearing+distanceturning)
+    return w
+
+
+
+
+
+
 
 
 # A helper function you may find useful.
@@ -133,6 +269,16 @@ def demo_grading(estimate_next_pos_fcn, target_bot, OTHER = None):
     prediction.penup()
     broken_robot.penup()
     measured_broken_robot.penup()
+    particles = []
+    for i in range(100):
+        particle = turtle.Turtle()
+        particle.shape('circle')
+        particle.color('black')
+        particle.resizemode('user')
+        particle.shapesize(.01, .01, .01)
+        particle.penup()
+        particles.append(particle)
+
     #End of Visualization
     while not localized and ctr <= 1000:
         ctr += 1
@@ -156,6 +302,11 @@ def demo_grading(estimate_next_pos_fcn, target_bot, OTHER = None):
         prediction.setheading(target_bot.heading*180/pi)
         prediction.goto(position_guess[0]*size_multiplier, position_guess[1]*size_multiplier-200)
         prediction.stamp()
+
+        #for i in range(100):
+        #    if ctr>2:
+        #        particles[i].goto(OTHER[3][i][0]*size_multiplier, OTHER[3][i][1]*size_multiplier-200)
+        #        particles[i].stamp()
         #End of Visualization
     return localized
 
